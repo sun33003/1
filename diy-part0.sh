@@ -20,5 +20,5 @@
 # 应用过滤OpenAppFilter 【luci oaf app】
 # 和加速模块（Turbo ACC)有冲突，需要关闭Turboo ACC后使用
 #git clone https://github.com/destan19/OpenAppFilter.git package/OpenAppFilter 
-# sed -i "/helloworld/d" "feeds.conf.default"
-# echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
+sed -i "/helloworld/d" "feeds.conf.default"
+echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
