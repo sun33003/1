@@ -1,139 +1,160 @@
-name: JCG_Q30_PRO
+#
+# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+# Description: Build OpenWrt using GitHub Actions
+#
+
+name: Build OpenWrt jcg_q30_pro
 
 on:
   repository_dispatch:
   workflow_dispatch:
-    inputs:
-      clean:
-         description: 'clean ccache'
-         default: 'false'
-
-  #schedule:
-  #- cron: 0 17 * * 1
-
+  schedule:
+    - cron:  '22 16 * * 2,4'
 env:
-  REPO_URL: https://github.com/thunder361/immortalwrt-mt798x 
-  REPO_BRANCH: openwrt-21.02
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: JCG_Q30_PRO.config
-  DIY_P1_SH: diy-hanwckf-1.sh
-  DIY_P2_SH: diy-hanwckf-2.sh
   TZ: Asia/Shanghai
-  
+
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-      
+    runs-on: ubuntu-20.04
     steps:
     - name: Checkout
-      uses: actions/checkout@main
-    
-    - name: Prepare environment
+      uses: actions/checkout@v3
+      with:
+        ref: jcg_q30_pro
+
+    - name: Initialization environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-         sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.eu.org/init_build_environment.sh)'
-         sudo timedatectl set-timezone "$TZ"
-         sudo mkdir -p /workdir
-         sudo chown $USER:$GROUPS /workdir
-    
+        echo $(nproc)
+        free -h
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install sudo time git-core subversion build-essential gcc-multilib libncurses5-dev zlib1g-dev gawk flex gettext wget unzip grep rsync python3 tree python3-distutils
+        sudo -E apt-get -qq clean
+        sudo timedatectl set-timezone "$TZ"
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+
     - name: Clone source code
-      working-directory: /workdir
+      # working-directory: /workdir
       run: |
-         df -hT $PWD
-         git clone $REPO_URL -b $REPO_BRANCH openwrt
-         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-    
-    - name: Cache
-      uses: klever1988/cachewrtbuild@main
-      with:
-         ccache: 'true'
-         mixkey: 'JCG_Q30_PRO'
-         toolchain: 'true'
-         skip: 'true'
-         clean: ${{github.event.inputs.clean}}
-         prefix: ${{ github.workspace }}/openwrt
-
-    - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
-      
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
-
-    - name: Load custom configuration
+        pwd
+        git clone -b openwrt-21.02 --single-branch --depth=1 https://github.com/hanwckf/immortalwrt-mt798x openwrt
+        # ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        ls -l
+    # 插件包,不要可用注释
+    - name: feeds add kenzok8-package
       run: |
-         [ -e files ] && mv files openwrt/files
-         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-         chmod +x $DIY_P2_SH
-         cd openwrt
-         $GITHUB_WORKSPACE/$DIY_P2_SH
-        
-    - name: Download package
-      id: package
+        cd openwrt
+        sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+        sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
+
+    # - name: feeds add fw876/helloworld
+    #   run: |
+    #     cd openwrt
+    #     sed -i "/helloworld/d" "feeds.conf.default"
+    #     echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
+
+    - name: feeds init and download
       run: |
-         cd openwrt
-         make defconfig
-         make download -j8
-         find dl -size -1024c -exec ls -l {} \;
-         find dl -size -1024c -exec rm -f {} \;
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
 
-    - name: Compile the firmware
-      id: compile
+    - name: .config file init
       run: |
-         cd openwrt
-         echo -e "$(nproc) thread compile"
-         make -j$(nproc) || make -j1 V=s
-         echo "release_tag=JCG_Q30_PRO-ImmortalWrt-$(date +%Y.%m.%d)" >> $GITHUB_ENV
-         echo "release_name=JCG_Q30_PRO-ImmortalWrt" >> $GITHUB_ENV
-         echo "status=success" >> $GITHUB_OUTPUT
+        cp ./.config openwrt/.config
+        cd openwrt
+        rm -rf ./bin ./build_dir ./tmp
+        make defconfig
+        cat ./.config
 
-    - name: Check space usage
-      if: (!cancelled())
-      run: df -hT
 
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@main
-      if: steps.compile.outputs.status == 'success' && !cancelled()
-      with:
-         name: ${{ env.release_tag }}
-         path: openwrt/bin
+    # - name: Cache Hook
+    #   uses: actions/cache@v3
+    #   with:
+    #     path: |
+    #       openwrt/bin
+    #       openwrt/build_dir
+    #       openwrt/staging_dir
+    #       openwrt/tmp
+    #     key: cache_ar300nand_${{ hashFiles('openwrt/.config') }}
+    #     restore-keys: |
+    #       cache_ar300nand_
+    #       cache_ar300nand
 
-    - name: Organize files
+    - name: .config file bak
+      run: |
+        mkdir ./bin
+        cp ./.config ./bin/config.bak
+
+    - name: Change IP to..192.168.8.1
+      run: |
+        cd openwrt
+        sed -i "s/192.168.1.1/192.168.8.1/" package/base-files/files/bin/config_generate
+        cat package/base-files/files/bin/config_generate|grep lan\)
+
+    - name: make
+      run: |
+        cd openwrt
+        find ./ -name *gcc
+        make download -j8
+        rm -rf build.log
+        # | grep -i error
+        make -j$(expr $(nproc) + 12) V=99 2>&1 | tee build.log | grep -i error
+        cp build.log ./bin
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    - name: FIRMWARE set path
       id: organize
-      if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-         tar -cvf openwrt/bin/targets/mediatek/mt7981/packages.tar openwrt/bin/packages
-         cd openwrt/bin/targets/mediatek/mt7981
-         rm -rf packages
-         rm -rf feeds.buildinfo
-         rm -rf sha256sums
-         rm -rf version.buildinfo
-         rm -rf *kernel.bin
-         rm -rf *manifest
-         mv *sysupgrade.bin JCG_Q30_PRO-sysupgrade-$(date +%Y.%m.%d).bin
-         mv *factory.bin JCG_Q30_PRO-factory-$(date +%Y.%m.%d).bin
-         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-         echo "status=success" >> $GITHUB_OUTPUT
-        
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v1
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-         name: ${{ env.release_name }}
-         tag_name: ${{ env.release_tag }}
-         body: |
-             Gateway：192.168.222.1
-             Password：password
-             Application：mwan3，ramfree，ua2f
-         files: ${{ env.FIRMWARE }}/*
+        cd openwrt/bin/
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
-    - name: Delete older releases
-      uses: dev-drprasad/delete-older-releases@v0.2.1
+    - name: Artifacts File Save
+      uses: actions/upload-artifact@main
       with:
-        keep_latest: 3
-        delete_tags: true
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+
+    - name: Release set path
+      run: |
+        touch release.txt
+        cd openwrt/bin/targets/*/*
+        echo "RELEASE_PATH=$PWD" >> $GITHUB_ENV
+
+    - name: pack bin dir
+      run: |
+        cd openwrt
+        tar -zcvf bin_dir.tar.gz ./bin/
+        mv bin_dir.tar.gz ${{ env.RELEASE_PATH }}/
+        rm -rf ${{ env.RELEASE_PATH }}/packages
+
+    - name: pack dl dir
+      run: |
+        cd openwrt
+        tar -zcvf dl.tar.gz ./dl/
+        mv dl.tar.gz ${{ env.RELEASE_PATH }}/
+        
+    # - name: Cloudupload
+    #   id: cloudupload
+    #   run: |
+    #     curl -fsSL git.io/file-transfer | sh
+    #     ./transfer wss --no-progress ${{ env.RELEASE_PATH }}/bin_dir.tar.gz 2>&1 | tee release.txt
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        body_path: release.txt
+        files: ${{ env.RELEASE_PATH }}/*
