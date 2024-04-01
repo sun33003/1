@@ -16,7 +16,7 @@
 # Add a feed source
 sed -i "/helloworld/d" "feeds.conf.default"
 echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
-#echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
+echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
 
 # 添加第三方软件包
 #git clone https://github.com/kenzok8/openwrt-packages.git package/openwrt-packages
