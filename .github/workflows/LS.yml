@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build RAX30000M OpenWrt 23.05
+name: Build LS
 
 on:
   repository_dispatch:
