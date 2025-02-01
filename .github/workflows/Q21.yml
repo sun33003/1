@@ -20,7 +20,7 @@ on:
         default: 'false'
 
 env:
-  REPO_URL: https://github.com/dragino/openwrt_lede-18.06
+  REPO_URL: https://github.com/openwrt/luci
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: Q21.config
