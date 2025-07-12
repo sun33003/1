@@ -11,14 +11,14 @@
 #
 
 # Uncomment a feed source
-# sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
+#sed -i 's/^#\(.*helloworld\)/\1/' feeds.conf.default
 
 # Add a feed source
-sed -i "/helloworld/d" "feeds.conf.default"
-echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
-echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
+echo "src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main" >> "feeds.conf.default"
+echo "src-git passwall https://github.com/xiaorouji/openwrt-passwall.git;main" >> "feeds.conf.default"
+sed -i '2s/^#//' feeds.conf.default
+sed -i '3s/^/#/' feeds.conf.default
+echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 
-# 添加第三方软件包
-#git clone https://github.com/kenzok8/openwrt-packages.git package/openwrt-packages
-#git clone https://github.com/kenzok8/small-package package/small-package
-# git clone https://github.com/Zxilly/UA2F package/UA2F
+git clone -b lua https://github.com/sbwml/luci-app-alist package/alist
+# git clone https://github.com/rufengsuixing/luci-app-onliner package/onliner
