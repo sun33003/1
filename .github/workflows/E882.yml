@@ -22,7 +22,7 @@ on:
 env:
   # REPO_URL: https://github.com/immortalwrt/immortalwrt
   # REPO_BRANCH: master
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_URL: https://github.com/immortalwrt/immortalwrt/tree/openwrt-23.05
   # REPO_BRANCH: master
   # REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
   # REPO_BRANCH: openwrt-24.10-6.6
