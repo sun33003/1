@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build Q21
+name: Build Q30
 
 on:
   repository_dispatch:
@@ -24,10 +24,10 @@ env:
   # REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x
   # REPO_URL: https://github.com/coolsnowwolf/lede
   # REPO_BRANCH: master
-  REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x
-  REPO_BRANCH: openwrt-21.02
+  REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
+  REPO_BRANCH: openwrt-23.05
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: Q21.config
+  CONFIG_FILE: Q30.config
   DIY_P1_SH: diy-partE881.sh
   DIY_P2_SH: diy-partE882.sh
   UPLOAD_BIN_DIR: false
