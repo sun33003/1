@@ -17,5 +17,5 @@ rm -rf package/lean/default-settings
 rm -rf package/emortal/default-settings 2>/dev/null
 
 # Add a feed source
-# sed -i "/helloworld/d" "feeds.conf.default"   # 
-# echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"   # 
+sed -i "/helloworld/d" "feeds.conf.default"   # 
+echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"   # 
