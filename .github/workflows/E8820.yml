@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build E882
+name: Build E8820
 
 on:
   repository_dispatch:
