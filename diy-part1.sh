@@ -68,4 +68,3 @@ echo " SSR Plus: Xray / Trojan / Hysteria2"
 echo " IPv6: enabled"
 echo " Wi-Fi: MT7981"
 echo "=========================================="
-
