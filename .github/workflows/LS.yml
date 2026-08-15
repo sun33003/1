@@ -1,12 +1,10 @@
-name: Build ImmortalWrt 24.10 - JCG Q30 SSR Plus Minimal
+name: JCG Q30 ImmortalWrt 24.10 SSR Plus MINI
 
 on:
   workflow_dispatch:
 
 env:
   TZ: Asia/Shanghai
-  DEVICE: jcg_q30
-  DEFAULT_IP: 192.168.222.1
 
 jobs:
   build:
@@ -17,9 +15,9 @@ jobs:
 
     steps:
 
-    # ============================================================
-    # 1. 清理空间
-    # ============================================================
+    # ==========================================================
+    # 1. 清理 GitHub Actions 空间
+    # ==========================================================
     - name: Free disk space
       run: |
         sudo rm -rf /usr/local/lib/android
@@ -29,9 +27,9 @@ jobs:
         sudo apt-get clean
         df -h
 
-    # ============================================================
-    # 2. 编译环境
-    # ============================================================
+    # ==========================================================
+    # 2. 安装编译依赖
+    # ==========================================================
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -55,20 +53,19 @@ jobs:
           file \
           wget \
           curl \
-          ccache \
-          rename \
           xsltproc \
           swig \
           time \
           jq
 
-    # ============================================================
+    # ==========================================================
     # 3. 下载 ImmortalWrt 24.10
-    # ============================================================
+    # ==========================================================
     - name: Clone ImmortalWrt 24.10
       run: |
         git clone \
           --depth=1 \
+          --single-branch \
           --branch=openwrt-24.10 \
           https://github.com/immortalwrt/immortalwrt.git \
           openwrt
@@ -76,14 +73,14 @@ jobs:
         cd openwrt
 
         echo "=========================================="
-        echo "ImmortalWrt commit"
+        echo "ImmortalWrt version"
         echo "=========================================="
 
         git log -1 --oneline
 
-    # ============================================================
+    # ==========================================================
     # 4. feeds
-    # ============================================================
+    # ==========================================================
     - name: Configure feeds
       working-directory: openwrt
       run: |
@@ -92,25 +89,31 @@ jobs:
         src-git packages https://github.com/immortalwrt/packages.git
         src-git luci https://github.com/immortalwrt/luci.git
         src-git routing https://github.com/openwrt/routing.git
-        src-git telephony https://git.openwrt.org/feed/telephony.git
-
         src-git kenzo https://github.com/kenzok8/openwrt-packages.git
         src-git small https://github.com/kenzok8/small.git
         EOF
 
-        ./scripts/feeds update -a
+        ./scripts/feeds update packages
+        ./scripts/feeds update luci
+        ./scripts/feeds update routing
+        ./scripts/feeds update kenzo
+        ./scripts/feeds update small
 
-        ./scripts/feeds install -a
+        ./scripts/feeds install -a -p packages
+        ./scripts/feeds install -a -p luci
+        ./scripts/feeds install -a -p routing
+        ./scripts/feeds install -a -p kenzo
+        ./scripts/feeds install -a -p small
 
-    # ============================================================
-    # 5. 选择 JCG Q30
-    # ============================================================
-    - name: Verify JCG Q30 target
+    # ==========================================================
+    # 5. 检查 JCG Q30
+    # ==========================================================
+    - name: Check JCG Q30 target
       working-directory: openwrt
       run: |
 
         echo "=========================================="
-        echo "JCG Q30 Target"
+        echo "JCG Q30 target"
         echo "=========================================="
 
         grep -R \
@@ -118,19 +121,19 @@ jobs:
           target/linux/mediatek \
           2>/dev/null || true
 
-    # ============================================================
-    # 6. 极度精简配置
-    # ============================================================
-    - name: Generate minimal configuration
+    # ==========================================================
+    # 6. 创建极简配置
+    # ==========================================================
+    - name: Generate minimal config
       working-directory: openwrt
       run: |
 
         cat > .config <<'EOF'
 
         #
-        # ==========================================================
-        # Target
-        # ==========================================================
+        # ========================================================
+        # JCG Q30 / MT7981
+        # ========================================================
         #
 
         CONFIG_TARGET_mediatek=y
@@ -139,17 +142,13 @@ jobs:
 
 
         #
-        # ==========================================================
+        # ========================================================
         # LuCI
-        # ==========================================================
+        # ========================================================
         #
 
         CONFIG_PACKAGE_luci=y
         CONFIG_PACKAGE_luci-ssl=y
-
-        CONFIG_PACKAGE_luci-base=y
-        CONFIG_PACKAGE_luci-mod-admin-full=y
-
         CONFIG_PACKAGE_luci-theme-bootstrap=y
 
         CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
@@ -157,142 +156,108 @@ jobs:
 
 
         #
-        # ==========================================================
+        # ========================================================
         # SSH
-        # ==========================================================
+        # ========================================================
         #
 
-        CONFIG_PACKAGE_dropbear=y
-
-
-        #
-        # ==========================================================
-        # IPv4
-        # ==========================================================
-        #
-
-        CONFIG_PACKAGE_dnsmasq=y
-
-        CONFIG_PACKAGE_ip-full=y
-
-        CONFIG_PACKAGE_iptables=y
-        CONFIG_PACKAGE_iptables-mod-tproxy=y
-
-        CONFIG_PACKAGE_iptables-mod-conntrack-extra=y
+        
 
 
         #
-        # ==========================================================
+        # ========================================================
         # IPv6
-        # ==========================================================
+        #
+        # DNS/DHCP 不在这里手工配置
+        # 交给 ImmortalWrt 默认机制
+        # ========================================================
         #
 
         CONFIG_PACKAGE_odhcp6c=y
-        CONFIG_PACKAGE_odhcp6c_ext_cer_id=0
-
         CONFIG_PACKAGE_odhcpd-ipv6only=y
-
         CONFIG_PACKAGE_luci-proto-ipv6=y
 
 
         #
-        # ==========================================================
-        # Firewall / TPROXY
-        # ==========================================================
+        # ========================================================
+        # TPROXY
+        # ========================================================
         #
-
-        CONFIG_PACKAGE_firewall4=y
-
-        CONFIG_PACKAGE_kmod-nft-core=y
-        CONFIG_PACKAGE_kmod-nft-nat=y
-        CONFIG_PACKAGE_kmod-nft-tproxy=y
 
         CONFIG_PACKAGE_kmod-ipt-tproxy=y
-
-        CONFIG_PACKAGE_kmod-nf-conntrack=y
-        CONFIG_PACKAGE_kmod-nf-conntrack6=y
-
-        CONFIG_PACKAGE_kmod-nf-nat=y
-        CONFIG_PACKAGE_kmod-nf-nat6=y
+        CONFIG_PACKAGE_iptables-mod-tproxy=y
+        CONFIG_PACKAGE_kmod-nft-tproxy=y
 
 
         #
-        # ==========================================================
+        # ========================================================
+        # TUN
+        # ========================================================
+        #
+
+        
+
+
+        #
+        # ========================================================
+        # SSL
+        # ========================================================
+        #
+
+        #
+        # ========================================================
         # SSR Plus+
-        # ==========================================================
+        # ========================================================
         #
 
         CONFIG_PACKAGE_luci-app-ssr-plus=y
 
 
         #
-        # ==========================================================
+        # ========================================================
         # Xray
-        # ==========================================================
+        # ========================================================
         #
 
         CONFIG_PACKAGE_xray-core=y
 
 
         #
-        # ==========================================================
+        # ========================================================
         # V2Ray
-        # ==========================================================
+        # ========================================================
         #
 
         CONFIG_PACKAGE_v2ray-core=y
 
 
         #
-        # ==========================================================
+        # ========================================================
         # Trojan
-        # ==========================================================
+        # ========================================================
         #
 
         CONFIG_PACKAGE_trojan=y
 
 
         #
-        # ==========================================================
+        # ========================================================
         # Hysteria2
-        # ==========================================================
+        # ========================================================
         #
 
         CONFIG_PACKAGE_hysteria=y
 
 
         #
-        # ==========================================================
-        # SSL
-        # ==========================================================
-        #
-
-        CONFIG_PACKAGE_ca-bundle=y
-        CONFIG_PACKAGE_ca-certificates=y
-
-        CONFIG_PACKAGE_libustream-openssl=y
-
-
-        #
-        # ==========================================================
-        # 网络基础
-        # ==========================================================
-        #
-
-        CONFIG_PACKAGE_kmod-tun=y
-
-
-        #
-        # ==========================================================
-        # 删除其它代理
-        # ==========================================================
+        # ========================================================
+        # 禁止其它代理
+        # ========================================================
         #
 
         CONFIG_PACKAGE_luci-app-passwall=n
         CONFIG_PACKAGE_luci-app-passwall2=n
-
         CONFIG_PACKAGE_luci-app-homeproxy=n
-
         CONFIG_PACKAGE_luci-app-openclash=n
 
         CONFIG_PACKAGE_sing-box=n
@@ -309,9 +274,9 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除 Shadowsocks / SSR
-        # ==========================================================
+        # ========================================================
+        # 禁止 Shadowsocks / SSR
+        # ========================================================
         #
 
         CONFIG_PACKAGE_shadowsocks-libev-ss-local=n
@@ -324,45 +289,21 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除其它科学上网插件
-        # ==========================================================
-        #
-
-        CONFIG_PACKAGE_luci-app-adguardhome=n
-        CONFIG_PACKAGE_adguardhome=n
-
-        CONFIG_PACKAGE_luci-app-v2ray-server=n
-
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Server=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Client=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Redirect=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Kcptun=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_NaiveProxy=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Brook=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ChinaDNS_NG=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Simple_Obfs=n
-        CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Redsocks2=n
-
-
-        #
-        # ==========================================================
-        # 删除 NAS
-        # ==========================================================
+        # ========================================================
+        # 禁止 NAS
+        # ========================================================
         #
 
         CONFIG_PACKAGE_samba4-server=n
         CONFIG_PACKAGE_samba4-libs=n
         CONFIG_PACKAGE_samba4-utils=n
-
         CONFIG_PACKAGE_luci-app-samba4=n
 
 
         #
-        # ==========================================================
-        # 删除下载
-        # ==========================================================
+        # ========================================================
+        # 禁止 aria2
+        # ========================================================
         #
 
         CONFIG_PACKAGE_aria2=n
@@ -370,9 +311,9 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除 QoS
-        # ==========================================================
+        # ========================================================
+        # 禁止 QoS
+        # ========================================================
         #
 
         CONFIG_PACKAGE_kmod-sched-cake=n
@@ -382,9 +323,9 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除 UPnP
-        # ==========================================================
+        # ========================================================
+        # 禁止 UPnP
+        # ========================================================
         #
 
         CONFIG_PACKAGE_luci-app-upnp=n
@@ -392,9 +333,9 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除 DLNA
-        # ==========================================================
+        # ========================================================
+        # 禁止 DLNA
+        # ========================================================
         #
 
         CONFIG_PACKAGE_luci-app-minidlna=n
@@ -402,50 +343,47 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除 USB
-        # ==========================================================
+        # ========================================================
+        # 禁止 USB
+        # ========================================================
         #
 
-        CONFIG_PACKAGE_kmod-usb-core=n
-        CONFIG_PACKAGE_kmod-usb3=n
         CONFIG_PACKAGE_kmod-usb-storage=n
         CONFIG_PACKAGE_kmod-usb-storage-uas=n
 
 
         #
-        # ==========================================================
-        # 删除文件系统工具
-        # ==========================================================
+        # ========================================================
+        # 禁止文件系统工具
+        # ========================================================
         #
-
-        CONFIG_PACKAGE_fdisk=n
-        CONFIG_PACKAGE_mount-utils=n
-        CONFIG_PACKAGE_block-mount=n
-
-        CONFIG_PACKAGE_e2fsprogs=n
-        CONFIG_PACKAGE_mkfs-ext4=n
 
         CONFIG_PACKAGE_kmod-fs-ext4=n
         CONFIG_PACKAGE_kmod-fs-vfat=n
         CONFIG_PACKAGE_kmod-fs-exfat=n
 
+        CONFIG_PACKAGE_e2fsprogs=n
+        CONFIG_PACKAGE_mkfs-ext4=n
+
+        CONFIG_PACKAGE_fdisk=n
+        CONFIG_PACKAGE_block-mount=n
+        CONFIG_PACKAGE_mount-utils=n
+
 
         #
-        # ==========================================================
-        # 删除 Shell / 大型工具
-        # ==========================================================
+        # ========================================================
+        # 禁止大型工具
+        # ========================================================
         #
 
         CONFIG_PACKAGE_bash=n
         CONFIG_PACKAGE_gawk=n
+        CONFIG_PACKAGE_coreutils=n
+        CONFIG_PACKAGE_coreutils-base64=n
         CONFIG_PACKAGE_getopt=n
 
         CONFIG_PACKAGE_htop=n
         CONFIG_PACKAGE_procps-ng=n
-
-        CONFIG_PACKAGE_coreutils=n
-        CONFIG_PACKAGE_coreutils-base64=n
 
         CONFIG_PACKAGE_bsdtar=n
         CONFIG_PACKAGE_tar=n
@@ -453,9 +391,9 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除 OpenSSH
-        # ==========================================================
+        # ========================================================
+        # 禁止 OpenSSH
+        # ========================================================
         #
 
         CONFIG_PACKAGE_openssh-client=n
@@ -464,9 +402,9 @@ jobs:
 
 
         #
-        # ==========================================================
-        # 删除其它 LuCI 插件
-        # ==========================================================
+        # ========================================================
+        # 禁止其它 LuCI 插件
+        # ========================================================
         #
 
         CONFIG_PACKAGE_luci-app-commands=n
@@ -479,9 +417,19 @@ jobs:
 
 
         #
-        # ==========================================================
-        # Build
-        # ==========================================================
+        # ========================================================
+        # 禁止 AdGuard
+        # ========================================================
+        #
+
+        CONFIG_PACKAGE_adguardhome=n
+        CONFIG_PACKAGE_luci-app-adguardhome=n
+
+
+        #
+        # ========================================================
+        # 编译系统
+        # ========================================================
         #
 
         CONFIG_DEVEL=n
@@ -489,144 +437,100 @@ jobs:
 
         EOF
 
-
-    # ============================================================
-    # 7. LAN / IPv6 / 默认系统
-    # ============================================================
-    - name: Configure network
+    # ==========================================================
+    # 7. 只设置 LAN IP
+    #
+    # 不碰 DNS
+    # 不碰 DHCP
+    # 不碰 WAN
+    # 不碰 IPv6 DNS
+    # ==========================================================
+    - name: Set LAN IP
       working-directory: openwrt
       run: |
 
         mkdir -p files/etc/uci-defaults
 
-        cat > files/etc/uci-defaults/99-jcg-q30-network <<'EOF'
+        cat > files/etc/uci-defaults/99-jcg-q30-ip <<'EOF'
         #!/bin/sh
-
-        #
-        # LAN IPv4
-        #
 
         uci set network.lan.ipaddr='192.168.222.1'
         uci set network.lan.netmask='255.255.255.0'
-
-        #
-        # IPv6
-        #
-
-        uci set network.lan.ip6assign='64'
-
-        #
-        # IPv6 WAN
-        #
-
-        if uci get network.wan6 >/dev/null 2>&1; then
-            uci set network.wan6.proto='dhcpv6'
-            uci set network.wan6.reqaddress='try'
-            uci set network.wan6.reqprefix='auto'
-        fi
 
         uci commit network
 
         exit 0
         EOF
 
-        chmod +x files/etc/uci-defaults/99-jcg-q30-network
+        chmod +x \
+          files/etc/uci-defaults/99-jcg-q30-ip
 
-
-        #
-        # 默认 hostname
-        #
-
-        mkdir -p files/etc/config
-
-        cat > files/etc/config/system <<'EOF'
-        config system
-            option hostname 'JCG-Q30'
-            option timezone 'CST-8'
-            option zonename 'Asia/Shanghai'
-            option log_size '64'
-
-        config timeserver 'ntp'
-            list server 'ntp.aliyun.com'
-            list server 'time1.cloud.tencent.com'
-            list server 'time.cloudflare.com'
-            option enabled '1'
-        EOF
-
-
-    # ============================================================
-    # 8. 极简网络优化
-    # ============================================================
-    - name: Network optimization
+    # ==========================================================
+    # 8. 设置 hostname
+    # 只改名字，不碰 DNS/NTP/网络
+    # ==========================================================
+    - name: Set hostname
       working-directory: openwrt
       run: |
 
-        cat >> files/etc/sysctl.conf <<'EOF'
+        mkdir -p files/etc/uci-defaults
 
-        net.netfilter.nf_conntrack_max=65535
+        cat > files/etc/uci-defaults/98-jcg-q30-hostname <<'EOF'
+        #!/bin/sh
 
-        net.core.netdev_max_backlog=4096
+        uci set system.@system[0].hostname='JCG-Q30'
+        uci commit system
 
-        net.ipv4.tcp_fastopen=3
-
+        exit 0
         EOF
 
+        chmod +x \
+          files/etc/uci-defaults/98-jcg-q30-hostname
 
-    # ============================================================
-    # 9. SSR Plus 协议检查
-    # ============================================================
-    - name: Check SSR Plus configuration
-      working-directory: openwrt
-      run: |
-
-        echo "=========================================="
-        echo "SSR Plus / Proxy packages"
-        echo "=========================================="
-
-        grep -E \
-          'luci-app-ssr-plus|xray|v2ray|trojan|hysteria' \
-          .config || true
-
-
-    # ============================================================
-    # 10. Defconfig
-    # ============================================================
+    # ==========================================================
+    # 9. Defconfig
+    # ==========================================================
     - name: Defconfig
       working-directory: openwrt
+      shell: bash
       run: |
 
         make defconfig
 
         echo
         echo "=========================================="
-        echo "FINAL TARGET"
+        echo "TARGET"
         echo "=========================================="
 
         grep '^CONFIG_TARGET_' .config | grep '=y' || true
 
         echo
         echo "=========================================="
-        echo "PROXY PACKAGES"
+        echo "SCIENCE PROXY"
         echo "=========================================="
 
         grep -E \
-          '^CONFIG_PACKAGE_(luci-app-ssr-plus|xray-core|v2ray-core|trojan|hysteria)' \
+          '^CONFIG_PACKAGE_(luci-app-ssr-plus|xray-core|v2ray-core|trojan|hysteria)=' \
           .config || true
 
         echo
         echo "=========================================="
-        echo "UNWANTED PROXY PACKAGES"
+        echo "UNWANTED PROXY CHECK"
         echo "=========================================="
 
-        grep -E \
-          'passwall|homeproxy|openclash|sing-box|mosdns|smartdns|kcptun' \
-          .config || true
+        if grep -E \
+          '^CONFIG_PACKAGE_(luci-app-passwall|luci-app-passwall2|luci-app-homeproxy|luci-app-openclash|sing-box|mosdns|smartdns)=' \
+          .config | grep '=y'; then
 
+          echo "ERROR: unwanted proxy package found!"
+          exit 1
 
-    # ============================================================
-    # 11. 下载源码
-    # ============================================================
-    - name: Download packages
+        fi
+
+    # ==========================================================
+    # 10. 下载
+    # ==========================================================
+    - name: Download sources
       working-directory: openwrt
       run: |
 
@@ -634,10 +538,9 @@ jobs:
           -j$(nproc) \
           V=s
 
-
-    # ============================================================
-    # 12. 编译
-    # ============================================================
+    # ==========================================================
+    # 11. 编译
+    # ==========================================================
     - name: Compile firmware
       working-directory: openwrt
       run: |
@@ -646,59 +549,99 @@ jobs:
           -j$(nproc) \
           V=s
 
-
-    # ============================================================
-    # 13. 整理固件
-    # ============================================================
+    # ==========================================================
+    # 12. 收集固件
+    # ==========================================================
     - name: Collect firmware
       working-directory: openwrt
       run: |
 
-        mkdir -p /tmp/q30-firmware
+        mkdir -p /tmp/jcg-q30-firmware
 
         find bin/targets/mediatek/filogic/ \
           -maxdepth 1 \
           -type f \
-          -exec cp {} /tmp/q30-firmware/ \;
+          -exec cp {} /tmp/jcg-q30-firmware/ \;
 
         echo
         echo "=========================================="
-        echo "JCG Q30 Firmware"
+        echo "FIRMWARE"
         echo "=========================================="
 
-        ls -lh /tmp/q30-firmware
+        ls -lh /tmp/jcg-q30-firmware
 
         echo
         echo "=========================================="
         echo "SHA256"
         echo "=========================================="
 
-        cd /tmp/q30-firmware
-
+        cd /tmp/jcg-q30-firmware
         sha256sum *
 
-
-    # ============================================================
-    # 14. 上传固件
-    # ============================================================
+    # ==========================================================
+    # 13. 上传 Artifact
+    # ==========================================================
     - name: Upload firmware
       uses: actions/upload-artifact@v4
       with:
-        name: ImmortalWrt-24.10-JCG-Q30-SSRPlus-Mini
-        path: /tmp/q30-firmware/*
+        name: JCG-Q30-ImmortalWrt-24.10-SSRPlus-MINI
+        path: /tmp/jcg-q30-firmware/*
         retention-days: 30
 
-
-    # ============================================================
-    # 15. GitHub Release
-    # ============================================================
-    - name: Create release
+    # ==========================================================
+    # 14. GitHub Release
+    # ==========================================================
+    - name: Create Release
       if: success()
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: JCG-Q30-24.10-SSRPlus-${{ github.run_number }}
-        name: JCG Q30 ImmortalWrt 24.10 SSR Plus Minimal ${{ github.run_number }}
-        files: /tmp/q30-firmware/*
-        generate_release_notes: true
+        tag_name: JCG-Q30-24.10-SSRPlus-MINI-${{ github.run_number }}
+        name: JCG Q30 ImmortalWrt 24.10 SSR Plus MINI ${{ github.run_number }}
+        generate_release_notes: false
+        files: /tmp/jcg-q30-firmware/*
+        body: |
+          JCG Q30 / MT7981
+          ImmortalWrt 24.10
+
+          LAN:
+          192.168.222.1
+
+          Included:
+          - LuCI
+          - Chinese LuCI
+          - Dropbear SSH
+          - IPv6
+          - SSR Plus+
+          - Xray
+          - V2Ray
+          - Trojan
+          - Hysteria2
+          - TPROXY
+          - TUN
+          - SSL
+
+          DNS:
+          Use ImmortalWrt default configuration.
+
+          Removed:
+          - PassWall
+          - PassWall2
+          - HomeProxy
+          - OpenClash
+          - sing-box
+          - MosDNS
+          - SmartDNS
+          - Kcptun
+          - Shadowsocks
+          - Samba
+          - NAS
+          - aria2
+          - USB
+          - SQM
+          - CAKE
+          - UPnP
+          - DLNA
+          - OpenSSH
+          - unnecessary utilities
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
