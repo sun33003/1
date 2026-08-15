@@ -1,647 +1,194 @@
-name: JCG Q30 ImmortalWrt 24.10 SSR Plus MINI
+#
+# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+# Description: Build OpenWrt using GitHub Actions
+#
+
+name: Build Q30
 
 on:
+  repository_dispatch:
   workflow_dispatch:
+    inputs:
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
 
 env:
+  # REPO_URL: https://github.com/immortalwrt/immortalwrt
+  # REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x
+  # REPO_URL: https://github.com/coolsnowwolf/lede
+  # REPO_BRANCH: master
+  REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
+  REPO_BRANCH: openwrt-23.05
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: Q30.config
+  DIY_P1_SH: diy-partE881.sh
+  DIY_P2_SH: diy-partE882.sh
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: false
+  UPLOAD_WETRANSFER: false
+  UPLOAD_RELEASE: false
   TZ: Asia/Shanghai
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-
-    permissions:
-      contents: write
+    runs-on: ubuntu-22.04
 
     steps:
+    - name: Checkout
+      uses: actions/checkout@main
 
-    # ==========================================================
-    # 1. 清理 GitHub Actions 空间
-    # ==========================================================
-    - name: Free disk space
+    - name: Initialization environment
+      env:
+        DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo rm -rf /usr/local/lib/android
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /opt/hostedtoolcache
-        sudo apt-get clean
-        df -h
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install $(curl -fsSL git.io/depends-ubuntu-2004)
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+        sudo timedatectl set-timezone "$TZ"
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
 
-    # ==========================================================
-    # 2. 安装编译依赖
-    # ==========================================================
-    - name: Install dependencies
+    - name: Clone source code
+      working-directory: /workdir
       run: |
-        sudo apt-get update
+        df -hT $PWD
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-        sudo apt-get install -y \
-          build-essential \
-          clang \
-          flex \
-          bison \
-          gawk \
-          gettext \
-          git \
-          libncurses5-dev \
-          libncursesw5-dev \
-          libssl-dev \
-          python3 \
-          python3-setuptools \
-          rsync \
-          unzip \
-          zlib1g-dev \
-          file \
-          wget \
-          curl \
-          xsltproc \
-          swig \
-          time \
-          jq
-
-    # ==========================================================
-    # 3. 下载 ImmortalWrt 24.10
-    # ==========================================================
-    - name: Clone ImmortalWrt 24.10
+    - name: Load custom feeds
       run: |
-        git clone \
-          --depth=1 \
-          --single-branch \
-          --branch=openwrt-24.10 \
-          https://github.com/immortalwrt/immortalwrt.git \
-          openwrt
-
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
         cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P1_SH
 
-        echo "=========================================="
-        echo "ImmortalWrt version"
-        echo "=========================================="
+    - name: Update feeds
+      run: cd openwrt && ./scripts/feeds update -a
 
-        git log -1 --oneline
+    - name: Install feeds
+      run: cd openwrt && ./scripts/feeds install -a
 
-    # ==========================================================
-    # 4. feeds
-    # ==========================================================
-    - name: Configure feeds
-      working-directory: openwrt
+    - name: Load custom configuration
       run: |
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P2_SH
 
-        cat > feeds.conf.default <<'EOF'
-        src-git packages https://github.com/immortalwrt/packages.git
-        src-git luci https://github.com/immortalwrt/luci.git
-        src-git routing https://github.com/openwrt/routing.git
-        src-git kenzo https://github.com/kenzok8/openwrt-packages.git
-        src-git small https://github.com/kenzok8/small.git
-        EOF
+    - name: SSH connection to Actions
+      uses: P3TERX/ssh2actions@v1.0.0
+      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+      env:
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-        ./scripts/feeds update packages
-        ./scripts/feeds update luci
-        ./scripts/feeds update routing
-        ./scripts/feeds update kenzo
-        ./scripts/feeds update small
-
-        ./scripts/feeds install -a -p packages
-        ./scripts/feeds install -a -p luci
-        ./scripts/feeds install -a -p routing
-        ./scripts/feeds install -a -p kenzo
-        ./scripts/feeds install -a -p small
-
-    # ==========================================================
-    # 5. 检查 JCG Q30
-    # ==========================================================
-    - name: Check JCG Q30 target
-      working-directory: openwrt
+    - name: Download package
+      id: package
       run: |
-
-        echo "=========================================="
-        echo "JCG Q30 target"
-        echo "=========================================="
-
-        grep -R \
-          "jcg_q30" \
-          target/linux/mediatek \
-          2>/dev/null || true
-
-    # ==========================================================
-    # 6. 创建极简配置
-    # ==========================================================
-    - name: Generate minimal config
-      working-directory: openwrt
-      run: |
-
-        cat > .config <<'EOF'
-
-        #
-        # ========================================================
-        # JCG Q30 / MT7981
-        # ========================================================
-        #
-
-        CONFIG_TARGET_mediatek=y
-        CONFIG_TARGET_mediatek_filogic=y
-        CONFIG_TARGET_mediatek_filogic_DEVICE_jcg_q30=y
-
-
-        #
-        # ========================================================
-        # LuCI
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_luci=y
-        CONFIG_PACKAGE_luci-ssl=y
-        CONFIG_PACKAGE_luci-theme-bootstrap=y
-
-        CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-        CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y
-
-
-        #
-        # ========================================================
-        # SSH
-        # ========================================================
-        #
-
-        
-
-
-        #
-        # ========================================================
-        # IPv6
-        #
-        # DNS/DHCP 不在这里手工配置
-        # 交给 ImmortalWrt 默认机制
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_odhcp6c=y
-        CONFIG_PACKAGE_odhcpd-ipv6only=y
-        CONFIG_PACKAGE_luci-proto-ipv6=y
-
-
-        #
-        # ========================================================
-        # TPROXY
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_kmod-ipt-tproxy=y
-        CONFIG_PACKAGE_iptables-mod-tproxy=y
-        CONFIG_PACKAGE_kmod-nft-tproxy=y
-
-
-        #
-        # ========================================================
-        # TUN
-        # ========================================================
-        #
-
-        
-
-
-        #
-        # ========================================================
-        # SSL
-        # ========================================================
-        #
-
-        #
-        # ========================================================
-        # SSR Plus+
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_luci-app-ssr-plus=y
-
-
-        #
-        # ========================================================
-        # Xray
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_xray-core=y
-
-
-        #
-        # ========================================================
-        # V2Ray
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_v2ray-core=y
-
-
-        #
-        # ========================================================
-        # Trojan
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_trojan=y
-
-
-        #
-        # ========================================================
-        # Hysteria2
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_hysteria=y
-
-
-        #
-        # ========================================================
-        # 禁止其它代理
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_luci-app-passwall=n
-        CONFIG_PACKAGE_luci-app-passwall2=n
-        CONFIG_PACKAGE_luci-app-homeproxy=n
-        CONFIG_PACKAGE_luci-app-openclash=n
-
-        CONFIG_PACKAGE_sing-box=n
-
-        CONFIG_PACKAGE_mosdns=n
-        CONFIG_PACKAGE_mosdns-v5=n
-        CONFIG_PACKAGE_luci-app-mosdns=n
-
-        CONFIG_PACKAGE_smartdns=n
-        CONFIG_PACKAGE_luci-app-smartdns=n
-
-        CONFIG_PACKAGE_kcptun-client=n
-        CONFIG_PACKAGE_kcptun-server=n
-
-
-        #
-        # ========================================================
-        # 禁止 Shadowsocks / SSR
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_shadowsocks-libev-ss-local=n
-        CONFIG_PACKAGE_shadowsocks-libev-ss-redir=n
-        CONFIG_PACKAGE_shadowsocks-libev-ss-server=n
-
-        CONFIG_PACKAGE_shadowsocksr-libev-ss-local=n
-        CONFIG_PACKAGE_shadowsocksr-libev-ss-redir=n
-        CONFIG_PACKAGE_shadowsocksr-libev-ss-server=n
-
-
-        #
-        # ========================================================
-        # 禁止 NAS
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_samba4-server=n
-        CONFIG_PACKAGE_samba4-libs=n
-        CONFIG_PACKAGE_samba4-utils=n
-        CONFIG_PACKAGE_luci-app-samba4=n
-
-
-        #
-        # ========================================================
-        # 禁止 aria2
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_aria2=n
-        CONFIG_PACKAGE_luci-app-aria2=n
-
-
-        #
-        # ========================================================
-        # 禁止 QoS
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_kmod-sched-cake=n
-        CONFIG_PACKAGE_kmod-sched-core=n
-        CONFIG_PACKAGE_tc-full=n
-        CONFIG_PACKAGE_luci-app-sqm=n
-
-
-        #
-        # ========================================================
-        # 禁止 UPnP
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_luci-app-upnp=n
-        CONFIG_PACKAGE_miniupnpd=n
-
-
-        #
-        # ========================================================
-        # 禁止 DLNA
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_luci-app-minidlna=n
-        CONFIG_PACKAGE_minidlna=n
-
-
-        #
-        # ========================================================
-        # 禁止 USB
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_kmod-usb-storage=n
-        CONFIG_PACKAGE_kmod-usb-storage-uas=n
-
-
-        #
-        # ========================================================
-        # 禁止文件系统工具
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_kmod-fs-ext4=n
-        CONFIG_PACKAGE_kmod-fs-vfat=n
-        CONFIG_PACKAGE_kmod-fs-exfat=n
-
-        CONFIG_PACKAGE_e2fsprogs=n
-        CONFIG_PACKAGE_mkfs-ext4=n
-
-        CONFIG_PACKAGE_fdisk=n
-        CONFIG_PACKAGE_block-mount=n
-        CONFIG_PACKAGE_mount-utils=n
-
-
-        #
-        # ========================================================
-        # 禁止大型工具
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_bash=n
-        CONFIG_PACKAGE_gawk=n
-        CONFIG_PACKAGE_coreutils=n
-        CONFIG_PACKAGE_coreutils-base64=n
-        CONFIG_PACKAGE_getopt=n
-
-        CONFIG_PACKAGE_htop=n
-        CONFIG_PACKAGE_procps-ng=n
-
-        CONFIG_PACKAGE_bsdtar=n
-        CONFIG_PACKAGE_tar=n
-        CONFIG_PACKAGE_pigz=n
-
-
-        #
-        # ========================================================
-        # 禁止 OpenSSH
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_openssh-client=n
-        CONFIG_PACKAGE_openssh-server=n
-        CONFIG_PACKAGE_openssh-sftp-server=n
-
-
-        #
-        # ========================================================
-        # 禁止其它 LuCI 插件
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_luci-app-commands=n
-        CONFIG_PACKAGE_luci-app-package-manager=n
-        CONFIG_PACKAGE_luci-app-opkg=n
-        CONFIG_PACKAGE_luci-app-statistics=n
-        CONFIG_PACKAGE_luci-app-ddns=n
-        CONFIG_PACKAGE_luci-app-watchcat=n
-        CONFIG_PACKAGE_luci-app-attendedsysupgrade=n
-
-
-        #
-        # ========================================================
-        # 禁止 AdGuard
-        # ========================================================
-        #
-
-        CONFIG_PACKAGE_adguardhome=n
-        CONFIG_PACKAGE_luci-app-adguardhome=n
-
-
-        #
-        # ========================================================
-        # 编译系统
-        # ========================================================
-        #
-
-        CONFIG_DEVEL=n
-        CONFIG_CCACHE=y
-
-        EOF
-
-    # ==========================================================
-    # 7. 只设置 LAN IP
-    #
-    # 不碰 DNS
-    # 不碰 DHCP
-    # 不碰 WAN
-    # 不碰 IPv6 DNS
-    # ==========================================================
-    - name: Set LAN IP
-      working-directory: openwrt
-      run: |
-
-        mkdir -p files/etc/uci-defaults
-
-        cat > files/etc/uci-defaults/99-jcg-q30-ip <<'EOF'
-        #!/bin/sh
-
-        uci set network.lan.ipaddr='192.168.222.1'
-        uci set network.lan.netmask='255.255.255.0'
-
-        uci commit network
-
-        exit 0
-        EOF
-
-        chmod +x \
-          files/etc/uci-defaults/99-jcg-q30-ip
-
-    # ==========================================================
-    # 8. 设置 hostname
-    # 只改名字，不碰 DNS/NTP/网络
-    # ==========================================================
-    - name: Set hostname
-      working-directory: openwrt
-      run: |
-
-        mkdir -p files/etc/uci-defaults
-
-        cat > files/etc/uci-defaults/98-jcg-q30-hostname <<'EOF'
-        #!/bin/sh
-
-        uci set system.@system[0].hostname='JCG-Q30'
-        uci commit system
-
-        exit 0
-        EOF
-
-        chmod +x \
-          files/etc/uci-defaults/98-jcg-q30-hostname
-
-    # ==========================================================
-    # 9. Defconfig
-    # ==========================================================
-    - name: Defconfig
-      working-directory: openwrt
-      shell: bash
-      run: |
-
+        cd openwrt
         make defconfig
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
 
-        echo
-        echo "=========================================="
-        echo "TARGET"
-        echo "=========================================="
-
-        grep '^CONFIG_TARGET_' .config | grep '=y' || true
-
-        echo
-        echo "=========================================="
-        echo "SCIENCE PROXY"
-        echo "=========================================="
-
-        grep -E \
-          '^CONFIG_PACKAGE_(luci-app-ssr-plus|xray-core|v2ray-core|trojan|hysteria)=' \
-          .config || true
-
-        echo
-        echo "=========================================="
-        echo "UNWANTED PROXY CHECK"
-        echo "=========================================="
-
-        if grep -E \
-          '^CONFIG_PACKAGE_(luci-app-passwall|luci-app-passwall2|luci-app-homeproxy|luci-app-openclash|sing-box|mosdns|smartdns)=' \
-          .config | grep '=y'; then
-
-          echo "ERROR: unwanted proxy package found!"
-          exit 1
-
-        fi
-
-    # ==========================================================
-    # 10. 下载
-    # ==========================================================
-    - name: Download sources
-      working-directory: openwrt
+    - name: Compile the firmware
+      id: compile
       run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+        echo "::set-output name=status::success"
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-        make download \
-          -j$(nproc) \
-          V=s
+    - name: Check space usage
+      if: (!cancelled())
+      run: df -hT
 
-    # ==========================================================
-    # 11. 编译
-    # ==========================================================
-    - name: Compile firmware
-      working-directory: openwrt
-      run: |
-
-        make \
-          -j$(nproc) \
-          V=s
-
-    # ==========================================================
-    # 12. 收集固件
-    # ==========================================================
-    - name: Collect firmware
-      working-directory: openwrt
-      run: |
-
-        mkdir -p /tmp/jcg-q30-firmware
-
-        find bin/targets/mediatek/filogic/ \
-          -maxdepth 1 \
-          -type f \
-          -exec cp {} /tmp/jcg-q30-firmware/ \;
-
-        echo
-        echo "=========================================="
-        echo "FIRMWARE"
-        echo "=========================================="
-
-        ls -lh /tmp/jcg-q30-firmware
-
-        echo
-        echo "=========================================="
-        echo "SHA256"
-        echo "=========================================="
-
-        cd /tmp/jcg-q30-firmware
-        sha256sum *
-
-    # ==========================================================
-    # 13. 上传 Artifact
-    # ==========================================================
-    - name: Upload firmware
-      uses: actions/upload-artifact@v4
+    - name: Upload bin directory
+      uses: actions/upload-artifact@main
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
-        name: JCG-Q30-ImmortalWrt-24.10-SSRPlus-MINI
-        path: /tmp/jcg-q30-firmware/*
-        retention-days: 30
+        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: openwrt/bin
 
-    # ==========================================================
-    # 14. GitHub Release
-    # ==========================================================
-    - name: Create Release
-      if: success()
-      uses: softprops/action-gh-release@v2
+    - name: Organize files
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "::set-output name=status::success"
+
+    - name: Upload firmware directory
+      uses: actions/upload-artifact@main
+      if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        tag_name: JCG-Q30-24.10-SSRPlus-MINI-${{ github.run_number }}
-        name: JCG Q30 ImmortalWrt 24.10 SSR Plus MINI ${{ github.run_number }}
-        generate_release_notes: false
-        files: /tmp/jcg-q30-firmware/*
-        body: |
-          JCG Q30 / MT7981
-          ImmortalWrt 24.10
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
 
-          LAN:
-          192.168.222.1
+    - name: Upload firmware to cowtransfer
+      id: cowtransfer
+      if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
+      run: |
+        curl -fsSL git.io/file-transfer | sh
+        ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
+        echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
+        echo "::set-output name=url::$(cat cowtransfer.log | grep https | cut -f3 -d" ")"
 
-          Included:
-          - LuCI
-          - Chinese LuCI
-          - Dropbear SSH
-          - IPv6
-          - SSR Plus+
-          - Xray
-          - V2Ray
-          - Trojan
-          - Hysteria2
-          - TPROXY
-          - TUN
-          - SSL
+    - name: Upload firmware to WeTransfer
+      id: wetransfer
+      if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
+      run: |
+        curl -fsSL git.io/file-transfer | sh
+        ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
+        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
+        echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
 
-          DNS:
-          Use ImmortalWrt default configuration.
+    - name: Generate release tag
+      id: tag
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
+        touch release.txt
+        [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
+        [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
+        echo "::set-output name=status::success"
 
-          Removed:
-          - PassWall
-          - PassWall2
-          - HomeProxy
-          - OpenClash
-          - sing-box
-          - MosDNS
-          - SmartDNS
-          - Kcptun
-          - Shadowsocks
-          - Samba
-          - NAS
-          - aria2
-          - USB
-          - SQM
-          - CAKE
-          - UPnP
-          - DLNA
-          - OpenSSH
-          - unnecessary utilities
+    - name: Upload firmware to release
+      uses: softprops/action-gh-release@v1
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: Delete workflow runs
+      uses: GitRML/delete-workflow-runs@main
+      with:
+        retain_days: 1
+        keep_minimum_runs: 3
+
+    - name: Remove old Releases
+      uses: dev-drprasad/delete-older-releases@v0.1.0
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      with:
+        keep_latest: 3
+        delete_tags: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
